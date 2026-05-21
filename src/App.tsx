@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import mascotUrl from './assets/images/husf_mascote_updated_1779362707243.png';
-import { TransparentImage } from './components/TransparentImage';
+  
 import { 
   UserCheck, 
   MessageSquareText, 
@@ -52,6 +51,7 @@ import { doc, setDoc, getDoc, collection, serverTimestamp, onSnapshot } from 'fi
 import { SoccerCelebration } from './components/SoccerCelebration';
 import { MascotHelper } from './components/MascotHelper';
 import { TransparentImage } from './components/TransparentImage';
+import mascotUrl from './assets/images/husf_mascote_updated_1779362707243.png';
 
 const GOAL_SOUND = 'https://assets.mixkit.co/active_storage/sfx/2045/2045-preview.mp3';
 
@@ -80,6 +80,7 @@ export default function App() {
   const [playerId, setPlayerId] = useState<string | null>(null);
   const [hasSavedSession, setHasSavedSession] = useState(false);
   const [isNewAccess, setIsNewAccess] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
   const [showWelcome, setShowWelcome] = useState(false);
 
   const [showGoalIntro, setShowGoalIntro] = useState(true);
@@ -89,45 +90,131 @@ export default function App() {
     preloadSounds();
     const saved = localStorage.getItem('paciente_seguro_progress');
     const savedId = localStorage.getItem('paciente_seguro_player_id');
+    let loadedProgress: any = null;
     if (saved && savedId) {
       const parsed = JSON.parse(saved);
-      setProgress({
+      loadedProgress = {
         ...parsed,
         scores: parsed.scores || {},
         stickers: parsed.stickers || [],
         history: parsed.history || []
-      });
+      };
+      setProgress(loadedProgress);
       setPlayerId(savedId);
       if (parsed.unit) {
         setHasSavedSession(true);
       }
     }
 
-    const unsubAuth = onAuthStateChanged(auth, (user) => {
+    const mergeHistory = (localHistory: any[], dbHistory: any[]): any[] => {
+      const mergedMap = new Map<string, any>();
+      (dbHistory || []).forEach(item => {
+        if (item && item.goalId) {
+          mergedMap.set(`${item.goalId}`, item);
+        }
+      });
+      (localHistory || []).forEach(item => {
+        if (item && item.goalId) {
+          const existing = mergedMap.get(`${item.goalId}`);
+          if (!existing || item.score > existing.score) {
+            mergedMap.set(`${item.goalId}`, item);
+          }
+        }
+      });
+      return Array.from(mergedMap.values());
+    };
+
+    const unsubAuth = onAuthStateChanged(auth, async (user) => {
       if (user) {
         setIsAdmin(user.email === 'diretoriaensino@husf.org.br');
-        // Se o usuário logou via redirect mas não tínhamos salvo no progress ainda
-        if (!isLoggedIn) {
-          const newProgress = {
-            ...progress,
-            userName: user.displayName || 'Jogador',
-          };
-          setPlayerId(user.uid);
-          setProgress(prev => ({
-            ...prev,
-            userName: user.displayName || 'Jogador'
-          }));
-          setIsLoggedIn(true);
-          const hideWelcome = localStorage.getItem('paciente_seguro_hide_welcome') === 'true';
-          if (!hideWelcome) {
-            setShowWelcome(true);
+        setPlayerId(user.uid);
+        setIsLoggedIn(true);
+        
+        try {
+          // Fetch existing progress from Firestore
+          const playerDocRef = doc(db, 'players', user.uid);
+          const playerDoc = await getDoc(playerDocRef);
+          
+          let dbProgress: any = null;
+          if (playerDoc.exists()) {
+            const data = playerDoc.data();
+            if (data) {
+              dbProgress = {
+                completedGoals: data.completedGoals || [],
+                scores: data.scores || {},
+                stickers: data.stickers || [],
+                userName: data.userName || data.name || user.displayName || 'Jogador',
+                unit: data.unit || '',
+                history: data.history || []
+              };
+            }
           }
-          localStorage.setItem('paciente_seguro_progress', JSON.stringify({
-            ...progress,
-            userName: user.displayName || 'Jogador'
-          }));
-          localStorage.setItem('paciente_seguro_player_id', user.uid);
-          saveToFirebase(newProgress, user.uid, user.email || '');
+          
+          // Merge local storage state and database state
+          setProgress(prev => {
+            const currentLocal = localStorage.getItem('paciente_seguro_progress');
+            const latestData = currentLocal ? JSON.parse(currentLocal) : (loadedProgress || prev);
+            
+            const mergedProgress = {
+              completedGoals: Array.from(new Set([
+                ...(latestData?.completedGoals || []), 
+                ...(dbProgress?.completedGoals || [])
+              ])) as GoalId[],
+              scores: { ...(dbProgress?.scores || {}), ...(latestData?.scores || {}) },
+              stickers: Array.from(new Set([
+                ...(latestData?.stickers || []), 
+                ...(dbProgress?.stickers || [])
+              ])) as GoalId[],
+              userName: latestData?.userName || dbProgress?.userName || user.displayName || prev.userName || 'Jogador',
+              unit: latestData?.unit || dbProgress?.unit || prev.unit || '',
+              history: mergeHistory(latestData?.history || [], dbProgress?.history || [])
+            };
+            
+            // Re-evaluate maximum score per goal to protect achievements
+            const mergedScores = { ...mergedProgress.scores };
+            const allGoalIds = [1, 2, 3, 4, 5, 6] as GoalId[];
+            allGoalIds.forEach(id => {
+              const localS = latestData?.scores?.[id] || 0;
+              const dbS = dbProgress?.scores?.[id] || 0;
+              mergedScores[id] = Math.max(localS, dbS);
+            });
+            mergedProgress.scores = mergedScores;
+            
+            localStorage.setItem('paciente_seguro_progress', JSON.stringify(mergedProgress));
+            localStorage.setItem('paciente_seguro_player_id', user.uid);
+            saveToFirebase(mergedProgress, user.uid, user.email || '');
+            
+            if (mergedProgress.unit) {
+              setHasSavedSession(true);
+            }
+            return mergedProgress;
+          });
+        } catch (err) {
+          console.error("Erro ao sincronizar progresso com FireStore:", err);
+          // Fallback to local storage state only if database fails
+          setProgress(prev => {
+            const currentLocal = localStorage.getItem('paciente_seguro_progress');
+            const latestData = currentLocal ? JSON.parse(currentLocal) : (loadedProgress || prev);
+            
+            const mergedProgress = {
+              ...latestData,
+              userName: user.displayName || latestData.userName || prev.userName || 'Jogador'
+            };
+            
+            localStorage.setItem('paciente_seguro_progress', JSON.stringify(mergedProgress));
+            localStorage.setItem('paciente_seguro_player_id', user.uid);
+            saveToFirebase(mergedProgress, user.uid, user.email || '');
+            
+            if (mergedProgress.unit) {
+              setHasSavedSession(true);
+            }
+            return mergedProgress;
+          });
+        }
+
+        const hideWelcome = localStorage.getItem('paciente_seguro_hide_welcome') === 'true';
+        if (!hideWelcome) {
+          setShowWelcome(true);
         }
       } else {
         setIsAdmin(false);
@@ -135,8 +222,22 @@ export default function App() {
     });
 
     // Handle Redirect Result
-    getRedirectResult(auth).catch((error) => {
+    getRedirectResult(auth).then((result) => {
+      if (result?.user) {
+        setAuthError(null);
+      }
+    }).catch((error) => {
       console.error("Error with redirect sign-in:", error);
+      let translatedErr = "Erro ao fazer login.";
+      if (error.code === 'auth/unauthorized-domain') {
+        const domain = window.location.hostname;
+        translatedErr = `O domínio "${domain}" não está autorizado no Console do Firebase de vocês. Acesse seu Console Firebase -> Authentication -> Configurações -> Domínios Autorizados e adicione "${domain}" à lista para liberar o acesso.`;
+      } else if (error.code === 'auth/popup-blocked') {
+        translatedErr = "O navegador bloqueou a janela pop-up do Google. Por favor, libere pop-ups para esta página.";
+      } else {
+        translatedErr = `Erro de Autenticação (${error.code || error.message}): ${error.message}. Por favor, limpe os cookies ou tente de outro dispositivo/navegador.`;
+      }
+      setAuthError(translatedErr);
     });
 
     const unsubConfig = onSnapshot(doc(db, 'config', 'globals'), (doc) => {
@@ -165,17 +266,26 @@ export default function App() {
       const totalScore = Object.values(newProgress.scores || {}).reduce((acc, curr) => acc + curr, 0);
       const averageScore = Math.round(totalScore / 6); // Baseado nas 6 metas totais para incentivar participação
 
-      await setDoc(doc(db, 'players', pId), {
+      const dataToSave: any = {
         name: newProgress.userName,
-        email: email || '',
+        userName: newProgress.userName,
         unit: newProgress.unit,
+        completedGoals: newProgress.completedGoals || [],
+        scores: newProgress.scores || {},
+        stickers: newProgress.stickers || [],
         goalsCompleted: newProgress.completedGoals.length,
         stickersEarned: newProgress.stickers?.length || 0,
         totalScore: totalScore,
         averageScore: averageScore,
         history: newProgress.history || [],
         lastUpdated: serverTimestamp()
-      }, { merge: true });
+      };
+
+      if (email) {
+        dataToSave.email = email;
+      }
+
+      await setDoc(doc(db, 'players', pId), dataToSave, { merge: true });
     } catch (error) {
       handleFirestoreError(error, OperationType.WRITE, `players/${pId}`);
     }
@@ -187,44 +297,41 @@ export default function App() {
 
   const handleLogin = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
+    setAuthError(null);
     if (progress.unit) {
       const provider = new GoogleAuthProvider();
       // Forçar seleção de conta para evitar login automático errado em ambientes compartilhados
       provider.setCustomParameters({ prompt: 'select_account' });
       
       try {
-        const userCredential = await signInWithPopup(auth, provider);
-        const user = userCredential.user;
-        
-        const newProgress = {
-          ...progress,
-          userName: user.displayName || 'Jogador',
-        };
-        
-        setPlayerId(user.uid);
-        setProgress(newProgress);
-        setIsLoggedIn(true);
-        const hideWelcome = localStorage.getItem('paciente_seguro_hide_welcome') === 'true';
-        if (!hideWelcome) {
-          setShowWelcome(true);
-        }
+        await signInWithPopup(auth, provider);
+        // O onAuthStateChanged tratará todo o carregamento, mesclagem e sincronização do progresso de forma robusta.
         playGoalSound();
-        
-        localStorage.setItem('paciente_seguro_progress', JSON.stringify(newProgress));
-        localStorage.setItem('paciente_seguro_player_id', user.uid);
-        
-        await saveToFirebase(newProgress, user.uid, user.email || '');
       } catch (error: any) {
         console.error("Error signing in with Google:", error);
         
+        // Se for erro de domínio não autorizado, reporta diretamente ao usuário
+        if (error.code === 'auth/unauthorized-domain') {
+          const domain = window.location.hostname;
+          setAuthError(`O domínio "${domain}" não está autorizado no Console do Firebase. Acesse seu Console Firebase -> Authentication -> Configurações -> Domínios Autorizados e adicione "${domain}" à lista para liberar o acesso.`);
+          return;
+        }
+
         // Se falhar por bloqueio de popup ou erro interno (comum em iframes), tenta redirect
         if (error.code === 'auth/popup-blocked' || error.code === 'auth/internal-error' || error.code === 'auth/web-storage-unsupported') {
           try {
             await signInWithRedirect(auth, provider);
-          } catch (redirectError) {
+          } catch (redirectError: any) {
             console.error("Error with fallback redirect:", redirectError);
-            alert("Erro ao entrar com Google. Verifique se os cookies de terceiros estão permitidos ou tente outro navegador.");
+            if (redirectError.code === 'auth/unauthorized-domain') {
+              const domain = window.location.hostname;
+              setAuthError(`O domínio "${domain}" não está autorizado no Console do Firebase. Acesse seu Console Firebase -> Authentication -> Configurações -> Domínios Autorizados e adicione "${domain}" à lista.`);
+            } else {
+              setAuthError(`Erro com login de redirecionamento: ${redirectError.message}. Verifique se cookies de terceiros estão permitidos.`);
+            }
           }
+        } else {
+          setAuthError(`Erro de Autenticação (${error.code || error.message}): ${error.message}`);
         }
       }
     }
@@ -344,18 +451,18 @@ export default function App() {
         >
           <div className="flex flex-col items-center mb-8">
             <div className="relative mb-4 flex flex-col items-center select-none">
-         <motion.div
-  animate={{ y: [0, -6, 0] }}
-  transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
-  className="w-36 h-36"
->
-  <TransparentImage 
-    src={mascotUrl} 
-    alt="Apitinho Mascote" 
-    className="w-full h-full object-contain drop-shadow-xl"
-    referrerPolicy="no-referrer"
-  />
-</motion.div>
+              <motion.div
+                animate={{ y: [0, -6, 0] }}
+                transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
+                className="w-36 h-36"
+              >
+                <TransparentImage 
+                  src={mascotUrl} 
+                  alt="Apitinho Mascote" 
+                  className="w-full h-full object-contain drop-shadow-xl"
+                  referrerPolicy="no-referrer"
+                />
+              </motion.div>
               <motion.div
                 animate={{ scale: [1, 1.05, 1], rotate: [5, 10, 5] }}
                 transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
@@ -367,6 +474,20 @@ export default function App() {
             <h1 className="text-3xl font-extrabold text-slate-900 text-center">Copa da Segurança</h1>
             <p className="text-slate-500 text-center mt-2">Em busca do Hexa da Segurança do Paciente!</p>
           </div>
+
+          {authError && (
+            <motion.div 
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              className="mb-6 p-4 bg-red-50 border-2 border-red-200 text-red-700 rounded-2xl text-xs font-semibold leading-relaxed text-left flex gap-3 shadow-inner"
+            >
+              <span className="text-xl shrink-0 animate-bounce">⚠️</span>
+              <div>
+                <strong className="block mb-1 text-red-800 uppercase tracking-tight">Problema de Acesso ao Campo</strong>
+                {authError}
+              </div>
+            </motion.div>
+          )}
 
           <AnimatePresence mode="wait">
             {hasSavedSession && !isNewAccess ? (
@@ -418,69 +539,14 @@ export default function App() {
                      onChange={e => setProgress({...progress, unit: e.target.value})}
                    >
                      <option value="">Selecione seu Setor...</option>
-                     <option value="ALA DE INTERNAÇÃO I">ALA DE INTERNAÇÃO I</option>
-<option value="ALA DE INTERNAÇÃO II">ALA DE INTERNAÇÃO II</option>
-<option value="ALA DE INTERNAÇÃO III">ALA DE INTERNAÇÃO III</option>
-<option value="ALA DE INTERNAÇÃO IV">ALA DE INTERNAÇÃO IV</option>
-<option value="ALMOXARIFADO">ALMOXARIFADO</option>
-<option value="ALOJAMENTO CONJUNTO">ALOJAMENTO CONJUNTO</option>
-<option value="ALOJAMENTO CONJ QUARTO PPP">ALOJAMENTO CONJ QUARTO PPP</option>
-<option value="AMBULATORIO HUSF">AMBULATORIO HUSF</option>
-<option value="CAF">CAF</option>
-<option value="CCIRAS">CCIRAS</option>
-<option value="CENTRAL DE GUIAS">CENTRAL DE GUIAS</option>
-<option value="CENTRO CIRURGICO">CENTRO CIRURGICO</option>
-<option value="CME">CME</option>
-<option value="COMERCIAL">COMERCIAL</option>
-<option value="COMPRAS">COMPRAS</option>
-<option value="COMUNICAÇÃO ORGANIZACIONAL">COMUNICAÇÃO ORGANIZACIONAL</option>
-<option value="CONTABILIDADE">CONTABILIDADE</option>
-<option value="CONTROLADORIA">CONTROLADORIA</option>
-<option value="COWORKING">COWORKING</option>
-<option value="DIRETORIA ADMINISTRATIVA">DIRETORIA ADMINISTRATIVA</option>
-<option value="DIRETORIA DE ENFERMAGEM">DIRETORIA DE ENFERMAGEM</option>
-<option value="DIRETORIA DE ENSINO E PESQUISA">DIRETORIA DE ENSINO E PESQUISA</option>
-<option value="DIRETORIA TECNICA">DIRETORIA TECNICA</option>
-<option value="EDUCAÇÃO CONTINUADA">EDUCAÇÃO CONTINUADA</option>
-<option value="ENGENHARIA CLINICA">ENGENHARIA CLINICA</option>
-<option value="ENGENHARIA HOSPITALAR">ENGENHARIA HOSPITALAR</option>
-<option value="EXCELENCIA OPERACIONAL">EXCELENCIA OPERACIONAL</option>
-<option value="FARMACIA HOSPITALAR">FARMACIA HOSPITALAR</option>
-<option value="FATURAMENTO">FATURAMENTO</option>
-<option value="FINANCEIRO">FINANCEIRO</option>
-<option value="FISIOTERAPIA">FISIOTERAPIA</option>
-<option value="HEMODINAMICA">HEMODINAMICA</option>
-<option value="HOSPITAL DIA">HOSPITAL DIA</option>
-<option value="IMAGINOLOGIA">IMAGINOLOGIA</option>
-<option value="LACTARIO">LACTARIO</option>
-<option value="LIMPEZA E HIGIENIZAÇÃO">LIMPEZA E HIGIENIZAÇÃO</option>
-<option value="MULTIDISCIPLINAR">MULTIDISCIPLINAR</option>
-<option value="NIR">NIR</option>
-<option value="NSP-QUALIDADE">NSP-QUALIDADE</option>
-<option value="ODONTOLOGIA">ODONTOLOGIA</option>
-<option value="OPME">OPME</option>
-<option value="PATRIMONIO">PATRIMONIO</option>
-<option value="PEDIATRIA">PEDIATRIA</option>
-<option value="PORTA REGULADA">PORTA REGULADA</option>
-<option value="PRONTO ATENDIMENTO">PRONTO ATENDIMENTO</option>
-<option value="QUARTO PPP">QUARTO PPP</option>
-<option value="RADIOLOGIA">RADIOLOGIA</option>
-<option value="RECEPÇÃO">RECEPÇÃO</option>
-<option value="RECRUTAMENTO E SELEÇÃO">RECRUTAMENTO E SELEÇÃO</option>
-<option value="RH">RH</option>
-<option value="ROUPARIA">ROUPARIA</option>
-<option value="SADT ENFERMAGEM">SADT ENFERMAGEM</option>
-<option value="SADT LABORATORIO">SADT LABORATORIO</option>
-<option value="SAME">SAME</option>
-<option value="SEGURANÇA DO TRABALHO">SEGURANÇA DO TRABALHO</option>
-<option value="SERVIÇO SOCIAL">SERVIÇO SOCIAL</option>
-<option value="TI">TI</option>
-<option value="TRANSPORTE">TRANSPORTE</option>
-<option value="UNIDADE DE ALIMENTAÇÃO E NUTRIÇÃO">UNIDADE DE ALIMENTAÇÃO E NUTRIÇÃO</option>
-<option value="UTI ADULTO">UTI ADULTO</option>
-<option value="UTI NEONATOLOGICA">UTI NEONATOLOGICA</option>
-<option value="UTI PEDIATRICA">UTI PEDIATRICA</option>
-
+                     <option value="UTI Adulto">UTI Adulto</option>
+                     <option value="UTI Pediatria">UTI Pediatria</option>
+                     <option value="Pronto Socorro">Pronto Socorro</option>
+                     <option value="Centro Cirúrgico">Centro Cirúrgico</option>
+                     <option value="Enfermaria">Enfermaria</option>
+                     <option value="Farmácia">Farmácia</option>
+                     <option value="Administrativo">Administrativo</option>
+                     <option value="Outros">Outros</option>
                    </select>
                 </div>
 
@@ -716,13 +782,24 @@ export default function App() {
               </span>
             </div>
             <button 
-              onClick={() => {
-                localStorage.removeItem('paciente_seguro_progress');
-                window.location.reload();
+              onClick={async () => {
+                if (window.confirm("Deseja realmente limpar a memória local e sair para reiniciar o jogo? Seus dados permanecem salvos no banco de dados vinculados à sua conta Google, mas sua sessão atual começará do zero.")) {
+                  try {
+                    await auth.signOut();
+                  } catch (err) {
+                    console.error("Erro ao deslogar do Firebase Auth:", err);
+                  }
+                  localStorage.removeItem('paciente_seguro_progress');
+                  localStorage.removeItem('paciente_seguro_player_id');
+                  localStorage.removeItem('paciente_seguro_hide_welcome');
+                  window.location.reload();
+                }
               }}
-              className="p-2 text-slate-400 hover:text-red-500 transition-colors"
+              className="p-2 text-slate-400 hover:text-red-500 transition-colors flex items-center gap-1 w-auto rounded-xl border border-slate-100 hover:border-red-100 hover:bg-rose-50/50"
+              title="Reiniciar e Sair"
             >
-              <LogOut className="w-5 h-5" />
+              <LogOut className="w-5 h-5 text-slate-500 hover:text-red-600" />
+              <span className="text-[10px] font-black text-slate-500 hover:text-red-600 uppercase tracking-wider hidden sm:inline">Reiniciar / Sair</span>
             </button>
           </div>
         </div>
