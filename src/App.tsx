@@ -551,8 +551,7 @@ export default function App() {
                      value={progress.unit}
                      onChange={e => setProgress({...progress, unit: e.target.value})}
                    >
-                     <option value="">Selecione seu Setor...</option>
-                   <option value="ALA DE INTERNAÇÃO I">ALA DE INTERNAÇÃO I</option>
+                     <option value="ALA DE INTERNAÇÃO I">ALA DE INTERNAÇÃO I</option>
 <option value="ALA DE INTERNAÇÃO II">ALA DE INTERNAÇÃO II</option>
 <option value="ALA DE INTERNAÇÃO III">ALA DE INTERNAÇÃO III</option>
 <option value="ALA DE INTERNAÇÃO IV">ALA DE INTERNAÇÃO IV</option>
