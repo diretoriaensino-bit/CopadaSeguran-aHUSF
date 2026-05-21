@@ -303,6 +303,7 @@ export default function App() {
   const handleLogin = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     setAuthError(null);
+    localStorage.removeItem('paciente_seguro_is_logged_out');
     if (progress.unit) {
       const provider = new GoogleAuthProvider();
       // Forçar seleção de conta para evitar login automático errado em ambientes compartilhados
@@ -551,7 +552,7 @@ export default function App() {
                      onChange={e => setProgress({...progress, unit: e.target.value})}
                    >
                      <option value="">Selecione seu Setor...</option>
-<option value="ALA DE INTERNAÇÃO I">ALA DE INTERNAÇÃO I</option>
+                   <option value="ALA DE INTERNAÇÃO I">ALA DE INTERNAÇÃO I</option>
 <option value="ALA DE INTERNAÇÃO II">ALA DE INTERNAÇÃO II</option>
 <option value="ALA DE INTERNAÇÃO III">ALA DE INTERNAÇÃO III</option>
 <option value="ALA DE INTERNAÇÃO IV">ALA DE INTERNAÇÃO IV</option>
