@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import mascotUrl from './assets/images/husf_mascote_updated_1779362707243.png';
+import { TransparentImage } from './components/TransparentImage';
 import { 
   UserCheck, 
   MessageSquareText, 
@@ -343,18 +344,18 @@ export default function App() {
         >
           <div className="flex flex-col items-center mb-8">
             <div className="relative mb-4 flex flex-col items-center select-none">
-              <motion.div
-                animate={{ y: [0, -6, 0] }}
-                transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
-                className="w-36 h-36"
-              >
-                <TransparentImage 
-                  src="/src/assets/images/husf_mascote_updated_1779362707243.png" 
-                  alt="Apitinho Mascote" 
-                  className="w-full h-full object-contain drop-shadow-xl"
-                  referrerPolicy="no-referrer"
-                />
-              </motion.div>
+         <motion.div
+  animate={{ y: [0, -6, 0] }}
+  transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
+  className="w-36 h-36"
+>
+  <TransparentImage 
+    src={mascotUrl} 
+    alt="Apitinho Mascote" 
+    className="w-full h-full object-contain drop-shadow-xl"
+    referrerPolicy="no-referrer"
+  />
+</motion.div>
               <motion.div
                 animate={{ scale: [1, 1.05, 1], rotate: [5, 10, 5] }}
                 transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}

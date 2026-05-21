@@ -1,3 +1,4 @@
+// src/components/TransparentImage.tsx
 import React, { useState, useEffect } from 'react';
 
 interface TransparentImageProps {
@@ -9,7 +10,7 @@ interface TransparentImageProps {
   onClick?: React.MouseEventHandler<HTMLImageElement>;
 }
 
-// In-memory cache to hold base64 URLs of processed images so they are loaded instant-fast!
+// Cache em memória para guardar as imagens já processadas em base64 e carregá-las instantaneamente
 const processedCache: Record<string, string> = {};
 
 export function TransparentImage({ src, tolerance = 20, className, ...props }: TransparentImageProps) {
@@ -18,14 +19,13 @@ export function TransparentImage({ src, tolerance = 20, className, ...props }: T
   useEffect(() => {
     if (!src) return;
 
-    // Retrieve from memory cache if available
+    // Recupera do cache se já processou essa URL antes
     if (processedCache[src]) {
       setProcessedSrc(processedCache[src]);
       return;
     }
 
     const img = new Image();
-    img.crossOrigin = 'anonymous';
     img.src = src;
 
     img.onload = () => {
@@ -45,11 +45,11 @@ export function TransparentImage({ src, tolerance = 20, className, ...props }: T
         const width = canvas.width;
         const height = canvas.height;
 
-        // Uint8Array for fast visited pixel tracking
+        // Controle para marcar pixels visitados
         const visited = new Uint8Array(width * height);
         const queue: number[] = [];
 
-        // Check if color is close to white within the tolerance range
+        // Verifica se a cor do pixel está próxima ao branco puro dentro da tolerância
         const isWhite = (r: number, g: number, b: number) => {
           return r >= 255 - tolerance && g >= 255 - tolerance && b >= 255 - tolerance;
         };
@@ -65,14 +65,14 @@ export function TransparentImage({ src, tolerance = 20, className, ...props }: T
           const b = data[dataIdx + 2];
           const a = data[dataIdx + 3];
 
-          // If the pixel is fully visible and meets the white threshold, add to flood fill queue
+          // Se for visível e for branco, adiciona na fila de remoção
           if (a > 50 && isWhite(r, g, b)) {
             visited[idx] = 1;
             queue.push(idx);
           }
         };
 
-        // Seed flood fill with all edge pixels of the image
+        // Começa a remoção de fundo por todas as bordas da imagem externa
         for (let x = 0; x < width; x++) {
           addPixel(x, 0);
           addPixel(x, height - 1);
@@ -82,17 +82,17 @@ export function TransparentImage({ src, tolerance = 20, className, ...props }: T
           addPixel(width - 1, y);
         }
 
-        // Perform Breadth-First-Search (BFS) flood fill to make the background transparent
+        // Executa Breadth-First-Search (BFS) para inundar e remover apenas o fundo branco externo
         let head = 0;
         while (head < queue.length) {
           const currIdx = queue[head++];
           const cy = Math.floor(currIdx / width);
           const cx = currIdx % width;
 
-          // Set alpha channel of background pixel to 0 (make fully transparent)
+          // Define o canal alpha (transparência) para zero
           data[currIdx * 4 + 3] = 0;
 
-          // Check all 4-way adjacent neighbors
+          // Verifica vizinhos 4-direcionais
           addPixel(cx + 1, cy);
           addPixel(cx - 1, cy);
           addPixel(cx, cy + 1);
@@ -104,8 +104,8 @@ export function TransparentImage({ src, tolerance = 20, className, ...props }: T
         processedCache[src] = dataUrl;
         setProcessedSrc(dataUrl);
       } catch (err) {
-        console.error('Failed to isolate mascot image from background:', err);
-        setProcessedSrc(src); // Fallback to original
+        console.error('Falha ao processar transparência do mascote:', err);
+        setProcessedSrc(src); // Fallback para a original em caso de erro
       }
     };
 
