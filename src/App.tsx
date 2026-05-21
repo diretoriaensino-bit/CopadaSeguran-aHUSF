@@ -781,26 +781,7 @@ export default function App() {
                 {progress.completedGoals.length}/{GOALS.length} Gols
               </span>
             </div>
-            <button 
-              onClick={async () => {
-                if (window.confirm("Deseja realmente limpar a memória local e sair para reiniciar o jogo? Seus dados permanecem salvos no banco de dados vinculados à sua conta Google, mas sua sessão atual começará do zero.")) {
-                  try {
-                    await auth.signOut();
-                  } catch (err) {
-                    console.error("Erro ao deslogar do Firebase Auth:", err);
-                  }
-                  localStorage.removeItem('paciente_seguro_progress');
-                  localStorage.removeItem('paciente_seguro_player_id');
-                  localStorage.removeItem('paciente_seguro_hide_welcome');
-                  window.location.reload();
-                }
-              }}
-              className="p-2 text-slate-400 hover:text-red-500 transition-colors flex items-center gap-1 w-auto rounded-xl border border-slate-100 hover:border-red-100 hover:bg-rose-50/50"
-              title="Reiniciar e Sair"
-            >
-              <LogOut className="w-5 h-5 text-slate-500 hover:text-red-600" />
-              <span className="text-[10px] font-black text-slate-500 hover:text-red-600 uppercase tracking-wider hidden sm:inline">Reiniciar / Sair</span>
-            </button>
+
           </div>
         </div>
       </header>
