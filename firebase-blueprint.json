@@ -1,0 +1,40 @@
+{
+  "entities": {
+    "Player": {
+      "title": "Player",
+      "description": "Represents a user participating in the Safety Cup.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "unit": { "type": "string" },
+        "goalsCompleted": { "type": "integer" },
+        "totalScore": { "type": "integer" },
+        "lastUpdated": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "name", "unit", "goalsCompleted", "totalScore"]
+    },
+    "Settings": {
+      "title": "Settings",
+      "description": "Global application configuration.",
+      "type": "object",
+      "properties": {
+        "unlockedGoals": { 
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "currentWeek": { "type": "integer" }
+      }
+    }
+  },
+  "firestore": {
+    "/players/{playerId}": {
+      "schema": "Player",
+      "description": "Individual player progress and ranking data."
+    },
+    "/config/globals": {
+      "schema": "Settings",
+      "description": "Global locks for missions."
+    }
+  }
+}

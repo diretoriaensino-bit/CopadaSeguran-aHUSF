@@ -1,0 +1,8 @@
+{
+  "name": "Copa da Segurança do Paciente",
+  "description": "Treinamento gamificado temático da Copa do Mundo sobre as 6 Metas Internacionais de Segurança do Paciente.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
