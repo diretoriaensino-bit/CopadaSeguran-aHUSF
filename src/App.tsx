@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import mascotUrl from './assets/images/husf_mascote_updated_1779362707243.png';
 import { 
   UserCheck, 
   MessageSquareText, 

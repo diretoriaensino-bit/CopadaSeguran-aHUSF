@@ -4,6 +4,7 @@ import { CheckCircle2, XCircle, User, Calendar, IdCard, BookOpen, AlertCircle, U
 import { cn, prepareQuizQuestions } from '../../lib/utils';
 import { MissionContainer } from '../MissionContainer';
 import { playSound } from '../../lib/sound';
+import patientWristbandUrl from '../../assets/images/patient_id_wristband_1779191847002.png';
 
 interface Props {
   onComplete: (score: number) => void;

@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { playSound } from '../lib/sound';
 import { Sparkles, RotateCw, Check, X, Clipboard, ShieldAlert, Award } from 'lucide-react';
 import { TransparentImage } from './TransparentImage';
+import mascotUrl from './assets/images/husf_mascote_updated_1779362707243.png';
 
 const MASCOT_TIPS = [
   "Olá, Campeão! Eu sou o **Apitinho**, o mascote oficial da Copa da Segurança do HUSF! Pronto para garantir o Hexa para o seu setor? ⚽🏆",
