@@ -126,6 +126,11 @@ export default function App() {
 
     const unsubAuth = onAuthStateChanged(auth, async (user) => {
       if (user) {
+        if (localStorage.getItem('paciente_seguro_is_logged_out') === 'true') {
+          setIsAdmin(false);
+          setIsLoggedIn(false);
+          return;
+        }
         setIsAdmin(user.email === 'diretoriaensino@husf.org.br');
         setPlayerId(user.uid);
         setIsLoggedIn(true);
@@ -507,11 +512,18 @@ export default function App() {
                 </div>
 
                 <button 
-                  onClick={handleLogin}
-                  className="w-full flex items-center justify-center gap-3 bg-emerald-600 text-white py-4 rounded-xl font-bold text-lg hover:bg-emerald-700 transition-all shadow-lg active:scale-95"
+                  onClick={async () => {
+                    localStorage.removeItem('paciente_seguro_is_logged_out');
+                    if (auth.currentUser) {
+                      window.location.reload();
+                    } else {
+                      await handleLogin();
+                    }
+                  }}
+                  className="w-full flex items-center justify-center gap-3 bg-emerald-600 text-white py-4 rounded-xl font-bold text-lg hover:bg-emerald-700 transition-all shadow-lg active:scale-95 animate-pulse hover:animate-none"
                 >
-                  <img src="https://www.google.com/favicon.ico" alt="Google" className="w-5 h-5 brightness-200" />
-                  Acessar Novamente
+                  <span className="text-xl">⚽</span>
+                  Voltar para as Missões
                 </button>
 
                 <button 
@@ -781,6 +793,25 @@ export default function App() {
                 {progress.completedGoals.length}/{GOALS.length} Gols
               </span>
             </div>
+
+            <button 
+              onClick={async () => {
+                if (window.confirm("Deseja realmente sair para a tela de login? Seus dados continuam totalmente salvos na seleção e no banco de dados.")) {
+                  try {
+                    localStorage.setItem('paciente_seguro_is_logged_out', 'true');
+                    await auth.signOut();
+                    setIsLoggedIn(false);
+                  } catch (err) {
+                    console.error("Erro ao sair:", err);
+                  }
+                }
+              }}
+              className="p-2 text-slate-400 hover:text-red-500 transition-colors flex items-center gap-1 w-auto rounded-xl border border-slate-100 hover:border-red-100 hover:bg-rose-50/50"
+              title="Sair do Jogo"
+            >
+              <LogOut className="w-5 h-5 text-slate-500 hover:text-red-600" />
+              <span className="text-[10px] font-black text-slate-500 hover:text-red-600 uppercase tracking-wider hidden sm:inline">Sair</span>
+            </button>
 
           </div>
         </div>
